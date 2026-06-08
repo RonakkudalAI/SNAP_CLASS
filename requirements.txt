@@ -1,4 +1,6 @@
+streamlit
 #utilities libraries
+
 numpy 
 pandas
 
@@ -13,4 +15,6 @@ bcrypt
 git+https://github.com/ageitgey/face_recognition_models
 segno
 pillow
-streamlit
+
+#librosa #Audio files edit,cuts ,loads,modifies
+resemblyzer #embedding of audio and campare voice is same voice or not 
