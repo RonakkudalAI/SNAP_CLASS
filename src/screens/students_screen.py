@@ -144,57 +144,10 @@ def student_dashboard():
     footer_dashboard()
 
 
-
-
-    def unenroll_button():
-
-        if st.button(
-            "Unenroll from this course",
-            type='tertiary',
-            width='stretch',
-            icon=':material/delete_forever:',
-            key=f"unenroll_{sub['subject_id']}"
-        ):
-
-            unenroll_student_to_subject(
-                student_id,
-                sid
-            )
-
-            st.toast(
-                f"Unenrolled from {sub['name']} successfully!"
-            )
-
-            st.rerun()
-
-
-
-
-        
-        
-
-        with cols[i % 2]:
-
-            subject_card(
-                name = sub['name'],
-                code =sub['subject_code'],
-                section = sub['section'],
-                stats = [
-                    ('📅', 'Total', stats['total']),
-                    ('✅', 'Attended', stats['attended']),
-                    ('📊', 'Attendance', f"{attendance_percentage}%")
-                ],
-                footer_callback=unenroll_button
-            )
-    footer_dashboard()
-
-
 def student_screen():
-
 
     style_background_dashboard()
     style_base_layout()
-
 
     if "student_data" in st.session_state:
         student_dashboard()
@@ -223,13 +176,13 @@ def student_screen():
 
             if num_faces == 0:
                 st.warning('Face not found!')
-            elif num_faces >1:
+            elif num_faces > 1:
                 st.warning('Multiple faces found')
             else:
                 if detected:
                     student_id = list(detected.keys())[0]
                     all_students = get_all_students()
-                    student = next((s for s in all_students if s['student_id']==student_id), None)
+                    student = next((s for s in all_students if s['student_id'] == student_id), None)
 
                     if student:
                         st.session_state.is_logged_in = True
@@ -241,6 +194,7 @@ def student_screen():
                 else:
                     st.info('Face not recognized! You might be a new student!')
                     show_registration = True
+
     if show_registration:
         with st.container(border=True):
             st.header('Register new Profile')
@@ -248,7 +202,6 @@ def student_screen():
 
             st.subheader('Optional : Voice Enrollment')
             st.info("Enroll your for voice only attendance")
-
 
             audio_data = None
 
@@ -261,7 +214,7 @@ def student_screen():
                 if new_name:
                     with st.spinner('Creating profile..'):
                         img = np.array(Image.open(photo_source))
-                        encodings= get_face_embeddings(img)
+                        encodings = get_face_embeddings(img)
                         if encodings:
                             face_emb = encodings[0].tolist()
 
@@ -281,10 +234,7 @@ def student_screen():
                                 st.rerun()
                         else:
                             st.error('Couldnt capture your facial features for registration')
-
                 else:
                     st.warning('Please enter your name!')
 
-
-        
     footer_dashboard()
