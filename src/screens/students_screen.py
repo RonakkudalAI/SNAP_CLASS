@@ -1,7 +1,5 @@
 import streamlit as st
-
 from src.ui.base_layout import style_background_dashboard, style_base_layout
-
 from src.components.header import header_dashboard
 from src.components.footer import footer_dashboard
 from PIL import Image
@@ -13,6 +11,12 @@ import time
 
 from src.components.dialog_enroll import enroll_dialog
 from src.components.subject_card import subject_card
+from src.database.db import (
+    get_active_session,
+    create_single_attendance,
+    has_marked_attendance
+)
+
 
 def student_dashboard():
 
@@ -61,32 +65,25 @@ def student_dashboard():
     st.divider()
 
     with st.spinner('Loading your enrolled subjects..'):
-
         subjects = get_student_subjects(student_id)
-
         logs = get_student_attendance(student_id)
 
     stats_map = {}
 
     for log in logs:
-
         sid = log['subject_id']
-
         if sid not in stats_map:
             stats_map[sid] = {
                 "total": 0,
                 "attended": 0
             }
-
         stats_map[sid]['total'] += 1
-
         if log.get('is_present'):
             stats_map[sid]['attended'] += 1
 
     cols = st.columns(2)
 
     for i, sub_node in enumerate(subjects):
-
         sub = sub_node['subjects']
         sid = sub['subject_id']
 
@@ -99,14 +96,22 @@ def student_dashboard():
         )
 
         attendance_percentage = 0
-
         if stats["total"] > 0:
             attendance_percentage = round(
                 (stats["attended"] / stats["total"]) * 100,
                 2
             )
 
-        def unenroll_button():
+        # FIX 1: Inner function ko loop ke andar properly indent kiya taaki sid ka access mile
+        def subject_actions():
+            if st.button(
+                "📸 Mark Attendance",
+                width='stretch',
+                key=f"attendance_{sid}"
+            ):
+                st.session_state.selected_subject = sid
+                st.session_state.mark_attendance = True
+                st.rerun()
 
             if st.button(
                 "Unenroll from this course",
@@ -115,20 +120,17 @@ def student_dashboard():
                 icon=':material/delete_forever:',
                 key=f"unenroll_{sid}"
             ):
-
                 unenroll_student_to_subject(
                     student_id,
                     sid
                 )
-
                 st.toast(
                     f"Unenrolled from {sub['name']} successfully!"
                 )
-
                 st.rerun()
 
+        # FIX 2: Layout blocks aur footer_callback ko loop ke andar sahi indentation pe rakha
         with cols[i % 2]:
-
             subject_card(
                 name=sub['name'],
                 code=sub['subject_code'],
@@ -138,8 +140,95 @@ def student_dashboard():
                     ('✅', 'Attended', stats['attended']),
                     ('📊', 'Attendance', f"{attendance_percentage}%")
                 ],
-                footer_callback=unenroll_button
+                footer_callback=subject_actions  # Changed from unenroll_button to subject_actions
             )
+
+if st.session_state.get("mark_attendance"):
+
+    st.divider()
+    st.header("Mark Attendance")
+
+    subject_id = st.session_state.selected_subject
+
+    session = get_active_session(subject_id)
+
+    if not session:
+
+        st.error(
+            "Attendance Session Closed"
+        )
+
+    else:
+
+        st.success(
+            "Attendance Session Active"
+        )
+
+        photo = st.camera_input(
+            "Capture Your Face"
+        )
+
+        if photo:
+
+            img = np.array(
+                Image.open(photo)
+            )
+
+            detected, _, faces = predict_attendance(img)
+
+            if faces == 0:
+
+                st.error(
+                    "No face detected"
+                )
+
+            elif len(detected) == 0:
+
+                st.error(
+                    "Face not recognized"
+                )
+
+            else:
+
+                detected_id = list(
+                    detected.keys()
+                )[0]
+
+                if int(detected_id) != int(student_id):
+
+                    st.error(
+                        "Face does not match logged in account"
+                    )
+
+                else:
+
+                    session_id = session["session_id"]
+
+                    already_marked = has_marked_attendance(
+                        student_id,
+                        session_id
+                    )
+
+                    if already_marked:
+
+                        st.warning(
+                            "Attendance already marked"
+                        )
+
+                    else:
+
+                        create_single_attendance(
+                            student_id,
+                            subject_id,
+                            session_id
+                        )
+
+                        st.success(
+                            "Attendance Marked Successfully"
+                        )
+
+                        st.session_state.mark_attendance = False
+
 
     footer_dashboard()
 

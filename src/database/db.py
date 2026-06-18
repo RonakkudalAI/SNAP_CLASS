@@ -189,6 +189,7 @@ def get_attendance_for_teacher(teacher_id):
 
 
 def create_attendance_session(subject_id, teacher_id, duration_minutes=10):
+    deactivate_old_sessions(subject_id)
 
     start_time = datetime.now()
     end_time = start_time + timedelta(minutes=duration_minutes)
@@ -231,7 +232,30 @@ def get_active_session(subject_id):
         .execute()
     )
 
-    return result.data
+    if not result.data:
+        return None
+
+    session = result.data[0]
+
+    end_time = datetime.fromisoformat(
+        session["end_time"]
+    )
+
+    if datetime.now() > end_time:
+
+        (
+            supabase.table("attendance_sessions")
+            .update({"is_active": False})
+            .eq(
+                "session_id",
+                session["session_id"]
+            )
+            .execute()
+        )
+
+        return None
+
+    return session
 
 
 
@@ -273,6 +297,33 @@ def get_student_attendance_percentage(student_id):
         subject_stats[subject]['percentage'] = percentage
 
     return subject_stats
+
+def deactivate_old_sessions(subject_id):
+
+    (
+        supabase.table("attendance_sessions")
+        .update({"is_active": False})
+        .eq("subject_id", subject_id)
+        .eq("is_active", True)
+        .execute()
+    )
+
+def has_marked_attendance(
+    student_id,
+    session_id
+):
+
+    result = (
+        supabase.table("attendance_logs")
+        .select("*")
+        .eq("student_id", student_id)
+        .eq("session_id", session_id)
+        .execute()
+    )
+
+    return len(result.data) > 0
+
+
 # =====================================================
 # DATABASE FLOW
 # =====================================================
