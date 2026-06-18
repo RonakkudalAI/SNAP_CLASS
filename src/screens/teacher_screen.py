@@ -24,7 +24,7 @@ from src.pipelines.face_pipeline import predict_attendance
 from src.components.dialog_attendance_results import attendance_result_dialog
 from src.database.config import supabase
 from src.components.dialog_voice_attendance import voice_attendance_dialog
-
+from src.database.db import create_attendance_session
 
 def teacher_screen():
     style_background_dashboard()
@@ -118,6 +118,26 @@ def teacher_tab_take_attendance():
             add_photos_dialog()
 
     selected_subject_id = subject_options[selected_subject_label]
+
+    c1, c2 = st.columns(2)
+
+    with c1:
+
+        if st.button(
+            "Start Attendance Session",
+            type="primary",
+            width="stretch"
+        ):
+
+            create_attendance_session(
+                selected_subject_id,
+                teacher_id
+            )
+
+            st.success(
+                "Attendance session started for 10 minutes"
+            )
+
     st.divider()
 
     if st.session_state.attendance_images:

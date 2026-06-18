@@ -1,4 +1,6 @@
 from src.database.config import supabase
+from datetime import datetime, timedelta
+
 import bcrypt
 
 
@@ -185,6 +187,26 @@ def get_attendance_for_teacher(teacher_id):
 
     return response.data
 
+
+def create_attendance_session(subject_id, teacher_id, duration_minutes=10):
+
+    start_time = datetime.now()
+    end_time = start_time + timedelta(minutes=duration_minutes)
+
+    result = (
+        supabase.table("attendance_sessions")
+        .insert({
+            "subject_id": subject_id,
+            "teacher_id": teacher_id,
+            "start_time": start_time.isoformat(),
+            "end_time": end_time.isoformat(),
+            "is_active": True
+        })
+        .execute()
+    )
+
+    return result.data
+
 def get_attendance_session_details(subject_id, timestamp):
 
     response = (
@@ -197,6 +219,22 @@ def get_attendance_session_details(subject_id, timestamp):
     )
 
     return response.data
+
+
+def get_active_session(subject_id):
+
+    result = (
+        supabase.table("attendance_sessions")
+        .select("*")
+        .eq("subject_id", subject_id)
+        .eq("is_active", True)
+        .execute()
+    )
+
+    return result.data
+
+
+
 def get_student_attendance_percentage(student_id):
 
     logs = get_student_attendance(student_id)
