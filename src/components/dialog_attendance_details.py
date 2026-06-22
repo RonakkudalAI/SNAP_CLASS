@@ -5,11 +5,11 @@ from src.database.db import get_attendance_session_details
 
 
 @st.dialog("Attendance Session Details", width="large")
-def attendance_details_dialog(subject_id, timestamp):
+def attendance_details_dialog(subject_id):
 
     records = get_attendance_session_details(
         subject_id,
-        timestamp
+        
     )
 
     data = []
@@ -26,13 +26,17 @@ def attendance_details_dialog(subject_id, timestamp):
 
     df = pd.DataFrame(data)
 
+    if df.empty:
+        st.warning("No attendance records found")
+        return
+
     present_df = df[
         df["Status"] == "✅ Present"
     ]
 
     absent_df = df[
         df["Status"] == "❌ Absent"
-    ]
+]
 
     st.success(
         f"Present Students : {len(present_df)}"

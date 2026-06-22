@@ -207,15 +207,13 @@ def create_attendance_session(subject_id, teacher_id, duration_minutes=10):
     )
 
     return result.data
-
-def get_attendance_session_details(subject_id, timestamp):
+def get_attendance_session_details(session_id):
 
     response = (
         supabase
         .table("attendance_logs")
         .select("*, students(*)")
-        .eq("subject_id", subject_id)
-        .eq("timestamp", timestamp)
+        .eq("session_id", session_id)
         .execute()
     )
 
@@ -323,6 +321,93 @@ def has_marked_attendance(
 
     return len(result.data) > 0
 
+
+def create_single_attendance(student_id, subject_id, session_id):
+
+    data = {
+        "student_id": student_id,
+        "subject_id": subject_id,
+        "session_id": session_id,
+        "is_present": True,
+        "timestamp": datetime.now().isoformat()
+    }
+
+    response = (
+        supabase.table("attendance_logs")
+        .insert(data)
+        .execute()
+    )
+
+    return response.data
+
+
+def get_subject_strength(subject_id):
+
+    result = (
+        supabase.table("subject_students")
+        .select("*", count="exact")
+        .eq("subject_id", subject_id)
+        .execute()
+    )
+
+    return result.count
+
+from datetime import datetime
+
+
+def get_active_sessions_for_teacher(teacher_id):
+
+    result = (
+        supabase.table("attendance_sessions")
+        .select("*")
+        .eq("teacher_id", teacher_id)
+        .eq("is_active", True)
+        .execute()
+    )
+
+    sessions = result.data
+
+    active_sessions = []
+
+    for session in sessions:
+
+        end_time = datetime.fromisoformat(
+            session["end_time"]
+        )
+
+        if datetime.now() > end_time:
+
+            (
+                supabase.table("attendance_sessions")
+                .update({"is_active": False})
+                .eq(
+                    "session_id",
+                    session["session_id"]
+                )
+                .execute()
+            )
+
+        else:
+            active_sessions.append(session)
+
+    return active_sessions
+
+
+def close_attendance_session(session_id):
+
+    result = (
+        supabase.table("attendance_sessions")
+        .update({
+            "is_active": False
+        })
+        .eq(
+            "session_id",
+            session_id
+        )
+        .execute()
+    )
+
+    return result.data
 
 # =====================================================
 # DATABASE FLOW

@@ -14,7 +14,8 @@ from src.database.db import (
     get_all_students, 
     teacher_login, 
     get_teacher_subjects, 
-    get_attendance_for_teacher
+    get_attendance_for_teacher,
+    create_attendance_session
 )
 from src.components.dialog_create_subject import create_subject_dialog
 from src.components.dialog_share_subject import share_subject_dialog
@@ -24,7 +25,11 @@ from src.pipelines.face_pipeline import predict_attendance
 from src.components.dialog_attendance_results import attendance_result_dialog
 from src.database.config import supabase
 from src.components.dialog_voice_attendance import voice_attendance_dialog
-from src.database.db import create_attendance_session
+from src.database.db import get_subject_strength
+from src.database.db import get_active_sessions_for_teacher
+from src.database.db import close_attendance_session
+
+
 
 def teacher_screen():
     style_background_dashboard()
@@ -86,7 +91,6 @@ def teacher_dashboard():
 
     footer_dashboard()
 
-
 def teacher_tab_take_attendance():
     teacher_id = st.session_state.teacher_data['teacher_id']
     st.header('Take AI Attendance')
@@ -97,7 +101,7 @@ def teacher_tab_take_attendance():
     subjects = get_teacher_subjects(teacher_id)
 
     if not subjects:
-        st.warning('You havent created any subjects yet! Please create one to begin!')
+        st.warning('You haven\'t created any subjects yet! Please create one to begin!')
         return
 
     subject_options = {
@@ -118,25 +122,28 @@ def teacher_tab_take_attendance():
             add_photos_dialog()
 
     selected_subject_id = subject_options[selected_subject_label]
-
+    
+  
+    # --- Fixed Indentation & Scope: Columns are now globally defined for this block ---
     c1, c2 = st.columns(2)
 
     with c1:
+        if st.button("Start Attendance Session", type="primary", width="stretch"):
+            session = create_attendance_session(selected_subject_id, teacher_id)
+            if session and len(session) > 0:
+                st.session_state.current_session_id = session[0]["session_id"]
+                st.success("Attendance session started for 10 minutes")
+                st.rerun()
+            else:
+                st.error("Failed to start session. Check your database configurations.")
 
-        if st.button(
-            "Start Attendance Session",
-            type="primary",
-            width="stretch"
-        ):
-
-            create_attendance_session(
-                selected_subject_id,
-                teacher_id
-            )
-
-            st.success(
-                "Attendance session started for 10 minutes"
-            )
+    with c2:
+        if "current_session_id" in st.session_state:
+            if st.button("End Attendance Session", type="secondary", width="stretch"):
+                close_attendance_session(st.session_state.current_session_id)
+                del st.session_state.current_session_id
+                st.success("Attendance Session Closed")
+                st.rerun()
 
     st.divider()
 
@@ -147,20 +154,24 @@ def teacher_tab_take_attendance():
             with gallery_cols[idx % 4]:
                 st.image(
                     img,
-                    width='stretch',
+                    use_container_width=True,
                     caption=f'Photo {idx+1}'
                 )
 
     has_photos = bool(st.session_state.attendance_images)
-    c1, c2, c3 = st.columns(3)
+    c3, c4, c5 = st.columns(3)
 
-    with c1:
+    with c3:
         if st.button('Clear all photos', width='stretch', type='tertiary', icon=':material/delete:', disabled=not has_photos):
             st.session_state.attendance_images = []
             st.rerun()
 
-    with c2:
+    with c4:
         if st.button('Run Face Analysis', width='stretch', type='secondary', icon=':material/analytics:', disabled=not has_photos):
+            if "current_session_id" not in st.session_state:
+                st.error("Please start attendance session first")
+                st.stop()
+
             with st.spinner('Deep scanning classroom photos...'):
                 all_detected_ids = {}
 
@@ -201,6 +212,7 @@ def teacher_tab_take_attendance():
                         })
 
                         attendance_to_log.append({
+                            'session_id': st.session_state.current_session_id,
                             'student_id': student['student_id'],
                             'subject_id': selected_subject_id,
                             'timestamp': current_timestamp,
@@ -212,16 +224,25 @@ def teacher_tab_take_attendance():
                         attendance_to_log
                     )
 
-    with c3:
+    with c5:
         if st.button('Use Voice Attendance', type='primary', width='stretch', icon=':material/mic:'):
             voice_attendance_dialog(selected_subject_id)
+
+
+
+
+
+
+
+
+
 
 
 def teacher_tab_manage_subjects():
     teacher_id = st.session_state.teacher_data['teacher_id']
     col1, col2 = st.columns(2)
     with col1:
-        st.header('Manage Subjects', width='stretch')
+        st.header('Manage Subjects')
     with col2:
         if st.button('Create New Subject', width='stretch'):
             create_subject_dialog(teacher_id)
@@ -251,36 +272,94 @@ def teacher_tab_manage_subjects():
 
 
 def teacher_tab_attendance_records():
+
     st.header('Attendance Records')
+
     teacher_id = st.session_state.teacher_data['teacher_id']
+
     records = get_attendance_for_teacher(teacher_id)
+
+    active_sessions = get_active_sessions_for_teacher(
+        teacher_id
+    )
+
+    if active_sessions:
+
+        st.subheader("🟢 Active Sessions")
+
+        for session in active_sessions:
+
+            subject_id = session["subject_id"]
+            session_id = session["session_id"]
+
+            present_count = len([
+                r for r in records
+                if r.get("session_id") == session_id
+                and r.get("is_present")
+            ])
+
+            total_count = get_subject_strength(
+                subject_id
+            )
+
+            subject_name = next(
+                (
+                    r["subjects"]["name"]
+                    for r in records
+                    if r.get("subject_id") == subject_id
+                ),
+                f"Subject {subject_id}"
+            )
+
+            st.info(
+                f"{subject_name} | "
+                f"Session Running | "
+                f"{present_count}/{total_count} Present"
+            )
+
+        st.divider()
 
     if not records:
         st.warning("No attendance records found.")
         return
 
     data = []
+
     for r in records:
+
         ts = r.get('timestamp')
+
         data.append({
             "ts_group": ts.split(".")[0] if ts else None,
             "Time": datetime.fromisoformat(ts).strftime("%Y-%m-%d %I:%M %p") if ts else "N/A",
             "Subject": r['subjects']['name'],
             "Subject Code": r['subjects']['subject_code'],
             "is_present": bool(r.get('is_present', False)),
-            "student_id": r.get('student_id')
+            "student_id": r.get('student_id'),
+            "session_id": r.get("session_id"),
+            "subject_id": r.get("subject_id")
         })
 
     df = pd.DataFrame(data)
 
     summary = (
-        df.groupby(['ts_group', 'Time', 'Subject', 'Subject Code'])
+        df.groupby([
+            'session_id',
+            'subject_id',
+            'ts_group',
+            'Time',
+            'Subject',
+            'Subject Code'
+        ])
         .agg(
-            Present_Count=('is_present', 'sum'),
-            Total_Count=('is_present', 'count')
+            Present_Count=('is_present', 'sum')
         )
         .reset_index()
     )
+
+    summary["Total_Count"] = summary[
+        "subject_id"
+    ].apply(get_subject_strength)
 
     summary['Attendance Stats'] = (
         "✅ "
@@ -290,53 +369,76 @@ def teacher_tab_attendance_records():
         + " Students"
     )
 
-    summary = summary.sort_values(by='ts_group', ascending=False)
+    summary = summary.sort_values(
+        by='ts_group',
+        ascending=False
+    )
+
+    st.subheader("📋 Attendance History")
 
     for idx, row in summary.iterrows():
-        c1, c2, c3, c4, c5 = st.columns([2, 2, 1, 2, 1])
+
+        c1, c2, c3, c4, c5 = st.columns(
+            [2, 2, 1, 2, 1]
+        )
+
         c1.write(row["Time"])
         c2.write(row["Subject"])
         c3.write(row["Subject Code"])
         c4.write(row["Attendance Stats"])
 
-        if c5.button("View", key=f"view_{idx}"):
-            timestamp = row["ts_group"]
-            subject_name = row["Subject"]
-            subject_id = next(
-                (
-                    r["subjects"]["subject_id"]
-                    for r in records
-                    if r["subjects"]["name"] == subject_name
-                ),
-                None
+        if c5.button(
+            "View",
+            key=f"view_{idx}"
+        ):
+
+            session_id = int(
+                float(row["session_id"])
             )
-            attendance_details_dialog(subject_id, timestamp)
+
+            attendance_details_dialog(
+                session_id
+            )
+
             st.divider()
 
-    # --- Class Analytics Section ---
     st.header("Class Analytics")
+
     analytics = {}
 
     for record in records:
+
         sid = record['student_id']
+
         if sid not in analytics:
-            analytics[sid] = {"present": 0, "total": 0}
-        
+            analytics[sid] = {
+                "present": 0,
+                "total": 0
+            }
+
         analytics[sid]["total"] += 1
+
         if record["is_present"]:
             analytics[sid]["present"] += 1
 
     students = get_all_students()
+
     rows = []
 
     for student in students:
+
         sid = student["student_id"]
+
         if sid not in analytics:
             continue
 
         present = analytics[sid]["present"]
         total = analytics[sid]["total"]
-        percentage = round((present / total) * 100, 2)
+
+        percentage = round(
+            (present / total) * 100,
+            2
+        )
 
         rows.append({
             "Student": student["name"],
@@ -346,22 +448,59 @@ def teacher_tab_attendance_records():
         })
 
     if rows:
-        analytics_df = pd.DataFrame(rows)
-        st.dataframe(analytics_df, width="stretch", hide_index=True)
 
-        highest = max(rows, key=lambda x: x["Attendance %"])
-        lowest = min(rows, key=lambda x: x["Attendance %"])
-        avg = round(sum(r["Attendance %"] for r in rows) / len(rows), 2)
+        analytics_df = pd.DataFrame(rows)
+
+        st.dataframe(
+            analytics_df,
+            width="stretch",
+            hide_index=True
+        )
+
+        highest = max(
+            rows,
+            key=lambda x: x["Attendance %"]
+        )
+
+        lowest = min(
+            rows,
+            key=lambda x: x["Attendance %"]
+        )
+
+        avg = round(
+            sum(
+                r["Attendance %"]
+                for r in rows
+            ) / len(rows),
+            2
+        )
 
         c1, c2, c3 = st.columns(3)
+
         with c1:
-            st.metric("Highest Attendance", f"{highest['Attendance %']}%")
+            st.metric(
+                "Highest Attendance",
+                f"{highest['Attendance %']}%"
+            )
+
         with c2:
-            st.metric("Lowest Attendance", f"{lowest['Attendance %']}%")
+            st.metric(
+                "Lowest Attendance",
+                f"{lowest['Attendance %']}%"
+            )
+
         with c3:
-            st.metric("Class Average", f"{avg}%")
+            st.metric(
+                "Class Average",
+                f"{avg}%"
+            )
+
     else:
-        st.info("No analytics data available")
+        st.info(
+            "No analytics data available"
+        )
+
+
 
 
 def teacher_tab_analytics():

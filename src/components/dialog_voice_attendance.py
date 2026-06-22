@@ -55,6 +55,7 @@ def voice_attendance_dialog(selected_subject_id):
                 })
 
                 attendance_to_log.append({
+                    'session_id': st.session_state.current_session_id,
                     'student_id': student['student_id'],
                     'subject_id': selected_subject_id,
                     'timestamp': current_timestamp,

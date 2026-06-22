@@ -6,20 +6,23 @@ from PIL import Image
 import numpy as np
 from src.pipelines.face_pipeline import predict_attendance, get_face_embeddings, train_classifier
 from src.pipelines.voice_pipeline import get_voice_embedding
-from src.database.db import get_all_students, create_student, get_student_attendance_percentage, get_student_subjects, get_student_attendance, unenroll_student_to_subject
-import time
-
-from src.components.dialog_enroll import enroll_dialog
-from src.components.subject_card import subject_card
 from src.database.db import (
+    get_all_students, 
+    create_student, 
+    get_student_subjects, 
+    get_student_attendance, 
+    unenroll_student_to_subject,
     get_active_session,
     create_single_attendance,
     has_marked_attendance
 )
+import time
+
+from src.components.dialog_enroll import enroll_dialog
+from src.components.subject_card import subject_card
 
 
 def student_dashboard():
-
     student_data = st.session_state.student_data
     student_id = student_data['student_id']
 
@@ -33,9 +36,7 @@ def student_dashboard():
         header_dashboard()
 
     with c2:
-        st.subheader(
-            f"Welcome, {student_data['name']}"
-        )
+        st.subheader(f"Welcome, {student_data['name']}")
 
         if st.button(
             "Logout",
@@ -47,7 +48,7 @@ def student_dashboard():
             del st.session_state.student_data
             st.rerun()
 
-    st.space()
+    st.markdown("###")
 
     c1, c2 = st.columns(2)
 
@@ -58,7 +59,7 @@ def student_dashboard():
         if st.button(
             'Enroll in Subject',
             type='primary',
-            width='stretch'
+            use_container_width=True
         ):
             enroll_dialog()
 
@@ -102,12 +103,13 @@ def student_dashboard():
                 2
             )
 
-        # FIX 1: Inner function ko loop ke andar properly indent kiya taaki sid ka access mile
+        # FIX: Ekdum clean aur working subject_actions callback with active debugging
         def subject_actions():
+
             if st.button(
                 "📸 Mark Attendance",
-                width='stretch',
-                key=f"attendance_{sid}"
+                key=f"attendance_{sid}",
+                use_container_width=True
             ):
                 st.session_state.selected_subject = sid
                 st.session_state.mark_attendance = True
@@ -115,21 +117,15 @@ def student_dashboard():
 
             if st.button(
                 "Unenroll from this course",
+                key=f"unenroll_{sid}",
                 type='tertiary',
-                width='stretch',
                 icon=':material/delete_forever:',
-                key=f"unenroll_{sid}"
+                use_container_width=True
             ):
-                unenroll_student_to_subject(
-                    student_id,
-                    sid
-                )
-                st.toast(
-                    f"Unenrolled from {sub['name']} successfully!"
-                )
+                unenroll_student_to_subject(student_id, sid)
+                st.toast(f"Unenrolled from {sub['name']} successfully!")
                 st.rerun()
 
-        # FIX 2: Layout blocks aur footer_callback ko loop ke andar sahi indentation pe rakha
         with cols[i % 2]:
             subject_card(
                 name=sub['name'],
@@ -140,101 +136,51 @@ def student_dashboard():
                     ('✅', 'Attended', stats['attended']),
                     ('📊', 'Attendance', f"{attendance_percentage}%")
                 ],
-                footer_callback=subject_actions  # Changed from unenroll_button to subject_actions
+                footer_callback=subject_actions
             )
 
-if st.session_state.get("mark_attendance"):
+    if st.session_state.get("mark_attendance"):
+        st.divider()
+        st.header("Mark Attendance")
 
-    st.divider()
-    st.header("Mark Attendance")
+        subject_id = st.session_state.selected_subject
+        session = get_active_session(subject_id)
 
-    subject_id = st.session_state.selected_subject
+        if not session:
+            st.error("Attendance Session Closed")
+        else:
+            st.success("Attendance Session Active")
+            photo = st.camera_input("Capture Your Face")
 
-    session = get_active_session(subject_id)
+            if photo:
+                img = np.array(Image.open(photo))
+                detected, _, faces = predict_attendance(img)
 
-    if not session:
-
-        st.error(
-            "Attendance Session Closed"
-        )
-
-    else:
-
-        st.success(
-            "Attendance Session Active"
-        )
-
-        photo = st.camera_input(
-            "Capture Your Face"
-        )
-
-        if photo:
-
-            img = np.array(
-                Image.open(photo)
-            )
-
-            detected, _, faces = predict_attendance(img)
-
-            if faces == 0:
-
-                st.error(
-                    "No face detected"
-                )
-
-            elif len(detected) == 0:
-
-                st.error(
-                    "Face not recognized"
-                )
-
-            else:
-
-                detected_id = list(
-                    detected.keys()
-                )[0]
-
-                if int(detected_id) != int(student_id):
-
-                    st.error(
-                        "Face does not match logged in account"
-                    )
-
+                if faces == 0:
+                    st.error("No face detected")
+                elif len(detected) == 0:
+                    st.error("Face not recognized")
                 else:
+                    detected_id = list(detected.keys())[0]
 
-                    session_id = session["session_id"]
-
-                    already_marked = has_marked_attendance(
-                        student_id,
-                        session_id
-                    )
-
-                    if already_marked:
-
-                        st.warning(
-                            "Attendance already marked"
-                        )
-
+                    if int(detected_id) != int(student_id):
+                        st.error("Face does not match logged in account")
                     else:
+                        session_id = session["session_id"]
+                        already_marked = has_marked_attendance(student_id, session_id)
 
-                        create_single_attendance(
-                            student_id,
-                            subject_id,
-                            session_id
-                        )
-
-                        st.success(
-                            "Attendance Marked Successfully"
-                        )
-
-                        st.session_state.mark_attendance = False
-
-
+                        if already_marked:
+                            st.warning("Attendance already marked")
+                        else:
+                            create_single_attendance(student_id, subject_id, session_id)
+                            st.success("Attendance Marked Successfully")
+                            time.sleep(1)
+                            st.session_state.mark_attendance = False
+                            st.rerun()
     footer_dashboard()
 
 
 def student_screen():
-
     style_background_dashboard()
     style_base_layout()
 
@@ -251,8 +197,7 @@ def student_screen():
             st.rerun()
 
     st.header('Login using FaceID', text_alignment='center')
-    st.space()
-    st.space()
+    st.markdown("###")
     
     show_registration = False
     photo_source = st.camera_input("Position your face in the center")
@@ -293,7 +238,6 @@ def student_screen():
             st.info("Enroll your for voice only attendance")
 
             audio_data = None
-
             try:
                 audio_data = st.audio_input('Record a short phrase like I am present, My name is Akash.')
             except Exception:
@@ -306,8 +250,8 @@ def student_screen():
                         encodings = get_face_embeddings(img)
                         if encodings:
                             face_emb = encodings[0].tolist()
-
                             voice_emb = None
+                            
                             if audio_data:
                                 voice_emb = get_voice_embedding(audio_data.read())
 
