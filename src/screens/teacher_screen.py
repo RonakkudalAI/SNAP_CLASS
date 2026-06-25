@@ -28,8 +28,9 @@ from src.components.dialog_voice_attendance import voice_attendance_dialog
 from src.database.db import get_subject_strength
 from src.database.db import get_active_sessions_for_teacher
 from src.database.db import close_attendance_session
-
-
+from src.database.db import create_attendance_schedule
+from src.database.db import get_scheduled_sessions
+from src.database.db import delete_schedule
 
 def teacher_screen():
     style_background_dashboard()
@@ -91,6 +92,8 @@ def teacher_dashboard():
 
     footer_dashboard()
 
+
+
 def teacher_tab_take_attendance():
     teacher_id = st.session_state.teacher_data['teacher_id']
     st.header('Take AI Attendance')
@@ -101,7 +104,7 @@ def teacher_tab_take_attendance():
     subjects = get_teacher_subjects(teacher_id)
 
     if not subjects:
-        st.warning('You haven\'t created any subjects yet! Please create one to begin!')
+        st.warning("You haven't created any subjects yet! Please create one to begin!")
         return
 
     subject_options = {
@@ -122,8 +125,66 @@ def teacher_tab_take_attendance():
             add_photos_dialog()
 
     selected_subject_id = subject_options[selected_subject_label]
-    
-  
+    st.subheader("📅 Schedule Attendance")
+
+    s1, s2, s3 = st.columns(3)
+
+    with s1:
+        schedule_date = st.date_input("Select Date")
+
+    with s2:
+        schedule_time = st.time_input("Select Time")
+
+    with s3:
+        duration_minutes = st.number_input(
+            "Duration (Minutes)",
+            min_value=1,
+            value=10
+        )
+
+    if st.button("Schedule Session", type="secondary", use_container_width=True):
+        create_attendance_schedule(
+            selected_subject_id,
+            teacher_id,
+            schedule_date,
+            schedule_time,
+            duration_minutes
+        )
+        st.success(f"Attendance scheduled for {schedule_date} at {schedule_time}")
+        st.rerun() # Added to refresh the upcoming list immediately
+
+    scheduled_sessions = get_scheduled_sessions(teacher_id)
+
+    if scheduled_sessions:
+        st.subheader("📅 Upcoming Scheduled Sessions")
+
+        # --- THE FIX IS HERE: Everything below is now correctly inside the loop ---
+        for session in scheduled_sessions:
+            c1, c2, c3, c4 = st.columns([2, 2, 2, 1])
+
+            # Find matching subject details
+            subject = next(
+                (s for s in subjects if s["subject_id"] == session["subject_id"]),
+                None
+            )
+
+            # Write the subject identifier to Column 1
+            if subject:
+                c1.write(f"**{subject['name']}** ({subject['subject_code']})")
+            else:
+                c1.write(f"Subject {session['subject_id']}")
+
+            # Column 2 & 3: Date and Time (Now visible for ALL sessions)
+            c2.write(str(session["scheduled_date"]))
+            c3.write(str(session["scheduled_time"]))
+
+            # Column 4: Delete Action
+            if c4.button("🗑️", key=f"delete_schedule_{session['schedule_id']}"):
+                delete_schedule(session["schedule_id"])
+                st.success("Schedule Deleted")
+                st.rerun()
+
+
     # --- Fixed Indentation & Scope: Columns are now globally defined for this block ---
     c1, c2 = st.columns(2)
 

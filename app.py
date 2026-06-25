@@ -1,6 +1,6 @@
 
 import streamlit as st
-
+from src.database.db import process_scheduled_sessions
 from src.screens.home_screen import home_screen
 from src.screens.teacher_screen import teacher_screen
 from src.screens.students_screen import student_screen
@@ -8,7 +8,9 @@ from src.screens.students_screen import student_screen
 from src.components.dialog_auto_enroll import auto_enroll_dialog
 
 def main():
+    process_scheduled_sessions()
     st.set_page_config(
+        
         page_title='SnapClass - Making Attendance faster using AI',
         page_icon= "assets/logo/logo.png"
     )

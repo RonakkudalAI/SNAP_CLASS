@@ -409,6 +409,91 @@ def close_attendance_session(session_id):
 
     return result.data
 
+
+def create_attendance_schedule(
+    subject_id,
+    teacher_id,
+    schedule_date,
+    schedule_time,
+    duration_minutes=10
+):
+
+    result = (
+        supabase.table("attendance_schedule")
+        .insert({
+            "subject_id": subject_id,
+            "teacher_id": teacher_id,
+            "scheduled_date": str(schedule_date),
+            "scheduled_time": str(schedule_time),
+            "duration_minutes": duration_minutes,
+            "is_completed": False
+        })
+        .execute()
+    )
+
+    return result.data
+
+def get_scheduled_sessions(teacher_id):
+
+    result = (
+        supabase.table("attendance_schedule")
+        .select("*")
+        .eq("teacher_id", teacher_id)
+        .eq("is_completed", False)
+        .order("scheduled_date")
+        .order("scheduled_time")
+        .execute()
+    )
+
+    return result.data
+
+def delete_schedule(schedule_id):
+
+    result = (
+        supabase.table("attendance_schedule")
+        .delete()
+        .eq("schedule_id", schedule_id)
+        .execute()
+    )
+
+    return result
+
+from datetime import datetime
+
+def process_scheduled_sessions():
+
+    schedules = (
+        supabase.table("attendance_schedule")
+        .select("*")
+        .eq("is_completed", False)
+        .execute()
+    )
+
+    for schedule in schedules.data:
+
+        scheduled_datetime = datetime.fromisoformat(
+            f"{schedule['scheduled_date']}T{schedule['scheduled_time']}"
+        )
+
+        if datetime.now() >= scheduled_datetime:
+
+            create_attendance_session(
+                schedule["subject_id"],
+                schedule["teacher_id"],
+                schedule["duration_minutes"]
+            )
+
+            (
+                supabase.table("attendance_schedule")
+                .update({
+                    "is_completed": True
+                })
+                .eq(
+                    "schedule_id",
+                    schedule["schedule_id"]
+                )
+                .execute()
+            )
 # =====================================================
 # DATABASE FLOW
 # =====================================================
